@@ -1,10 +1,18 @@
 import numpy as np
 from scipy import linalg
 from scipy import interpolate
+import pickle, os
+
+# For emcee MCMC
 import emcee
 import corner
 import time
 
+# For Multinest
+import pymultinest
+import json
+
+# For Plotting
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -167,6 +175,7 @@ def F_matrix (nu, dust_params, sync_params, cmb_params, models):
     return (np.matrix(F_fg),np.matrix(F_cmb),np.matrix(F))
 
 # Priors
+# emcee
 def ln_prior(beta):
     (dust_beta, dust_Td, sync_beta) = beta
     if (5. < dust_Td < 100. and 0. < dust_beta < 3. and -5. < sync_beta < 0.):
@@ -191,6 +200,7 @@ def lnprob(beta, nu, D, Ninv, beam_mat, models_fit):
     chi_square = (D - beam_mat*F*x_mat).T*Ninv*(D - beam_mat*F*x_mat) # Equation A4
     
     return lp - chi_square - 0.5*np.log(np.linalg.det(H))
+
 
 # Generate mock data
 def gen_data(nu, fsigma_T, fsigma_P, models_in, amps_in, params_in):
@@ -266,6 +276,86 @@ def mcmc (guess, nu, D, Ninv, beam_mat, ndim, models_fit, label):
     cmb_params = np.array([])
     return (dust_params, sync_params, cmb_params, samples)
 
+# Multinest Call
+def multinest (nu, D, Ninv, beam_mat, ndim, models_fit, label):
+    if not os.path.exists("chains"): os.mkdir("chains")
+    parameters=["dust_beta","dust_Td","sync_beta"]
+    n_params = len(parameters)
+
+    def prior_multi(cube, ndim, nparams):
+        cube[0]=0+3*cube[0]
+        cube[1]=5+95*cube[1]
+        cube[2]=-5+5*cube[2]
+
+    def loglike_multi(cube, ndim, nparams):
+        dust_beta, dust_Td, sync_beta = cube[0],cube[1],cube[2]
+        dust_params = np.array([dust_beta, dust_Td])
+        sync_params = np.array([sync_beta])
+        cmb_params = np.array([])
+        (F_fg, F_cmb, F) = F_matrix(nu, dust_params, sync_params, cmb_params, models_fit)
+        H = F_fg.T*Ninv*F_fg
+
+        x_mat = np.linalg.inv(F.T*beam_mat.T*Ninv*beam_mat*F)*F.T*beam_mat.T*Ninv*D # Equation A3
+
+        chi_square = (D - beam_mat*F*x_mat).T*Ninv*(D - beam_mat*F*x_mat) # Equation A4
+    
+        return -chi_square - 0.5*np.log(np.linalg.det(H))
+    
+    pymultinest.run(loglike_multi, prior_multi, n_params, outputfiles_basename='chains/single_pixel_',
+                        resume=False, verbose=True,n_live_points=1000,
+                        importance_nested_sampling=False)
+    a = pymultinest.Analyzer(n_params = n_params, outputfiles_basename='chains/single_pixel_')
+    s = a.get_stats()
+
+    output=a.get_equal_weighted_posterior()
+    outfile='test.out'
+    pickle.dump(output,open(outfile,"wb"))
+
+    # store name of parameters, always useful
+    with open('%sparams.json' % a.outputfiles_basename, 'w') as f:
+        json.dump(parameters, f, indent=2)
+    # store derived stats
+    with open('%sstats.json' % a.outputfiles_basename, mode='w') as f:
+        json.dump(s, f, indent=2)
+    print()
+    print("-" * 30, 'ANALYSIS', "-" * 30)
+    print("Global Evidence:\n\t%.15e +- %.15e" %
+              ( s['nested sampling global log-evidence'],
+                    s['nested sampling global log-evidence error'] ))
+
+    # Plots
+    p = pymultinest.PlotMarginalModes(a)
+    plt.figure(figsize=(5*n_params, 5*n_params))
+
+    for i in range(n_params):
+        plt.subplot(n_params, n_params, n_params * i + i + 1)
+        p.plot_marginal(i, with_ellipses = True, with_points = False, grid_points=50)
+        plt.ylabel("Probability")
+        plt.xlabel(parameters[i])
+        
+        for j in range(i):
+            plt.subplot(n_params, n_params, n_params * j + i + 1)
+            p.plot_conditional(i, j, with_ellipses = False, with_points = True, grid_points=30)
+            plt.xlabel(parameters[i])
+            plt.ylabel(parameters[j])
+
+    plt.savefig("chains/single_pixel_marginals_multinest.pdf") #, bbox_inches='tight')
+
+    for i in range(n_params):
+        outfile = '%s-mode-marginal-%d.pdf' % (a.outputfiles_basename,i)
+        p.plot_modes_marginal(i, with_ellipses = True, with_points = False)
+        plt.ylabel("Probability")
+        plt.xlabel(parameters[i])
+        plt.savefig(outfile, format='pdf', bbox_inches='tight')
+        plt.close()
+        
+        outfile = '%s-mode-marginal-cumulative-%d.pdf' % (a.outputfiles_basename,i)
+        p.plot_modes_marginal(i, cumulative = True, with_ellipses = True, with_points = False)
+        plt.ylabel("Cumulative probability")
+        plt.xlabel(parameters[i])
+        plt.savefig(outfile, format='pdf', bbox_inches='tight')
+        plt.close()
+    
 # CMB Chi-Square for a model design
 def model_test(nu, fsigma_T, fsigma_P, models_in, amps_in, params_in, models_fit, label):
     # Generate fake data with some "true" parameters
@@ -314,57 +404,9 @@ def model_test(nu, fsigma_T, fsigma_P, models_in, amps_in, params_in, models_fit
         fig.savefig('triangle_' + label + '.png')
         plt.close('all')
         
-    #sed_plot(nu, D_vec, Ninv, beam_mat, models_fit, samples)
+    multinest(nu, D_vec, Ninv, beam_mat, ndim, models_fit, label)
 
     return gls_cmb, cmb_chisq, cmb_noise
-
-
-def sed_plot (nu, D_vec, Ninv, beam_mat, models_fit, samples):    
-    # Data vs Model
-    # Set up plot area
-    plot_axes = prep_figure(1,1,0,0,3.5,3.)
-    plot_axes[0][0].set_xscale('log')
-    plot_axes[0][0].set_yscale('log')
-    plot_axes[0][0].set_xlabel(r'$\nu\ [{\rm GHz}]$',fontsize=10)
-    plot_axes[0][0].set_ylabel(r'$I_\nu\ [\mu {\rm K}_{\rm CMB}]$',fontsize=10)
-    plot_axes[0][0].tick_params(axis='both', which='major', labelsize=8)
-    plot_axes[0][0].axis([10., 1000., 10**-5, 10**5])
-    plot_axes[0][0].get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-
-    # Aesthetic Parameters
-    dash = (4,2)
-    lwidth = 0.75
-
-    # Data
-    plot_axes[0][0].plot(nu*1.e-9,np.abs(D_vec[0:len(nu)]),color='k',linestyle='-')
-    plot_axes[0][0].plot(nu*1.e-9,np.abs(D_vec[len(nu):2*len(nu)]),color='r',linestyle='-')
-    plot_axes[0][0].plot(nu*1.e-9,np.abs(D_vec[2*len(nu):3*len(nu)]),color='b',linestyle='-')
-
-    # Model
-    for i in range(len(samples)):
-        ndust = 0
-        if (models_fit[0] == 'mbb'):
-            dust_params = (samples[i,0], samples[i,1])
-            ndust = 2
-        else :
-            print 'Error! Cannot fit HD16 just yet'
-            exit()
-        if (models_fit[1] == 'pow'):
-            sync_params = (samples[i,ndust])
-        else :
-            print 'Error! Synchrotron model ' + models_fit[1] + ' not recognized!'
-            exit()
-        cmb_params = np.array([])
-        (F_fg, F_cmb, F) = F_matrix(nu, dust_params, sync_params, cmb_params, models_fit)
-        x_mat = np.linalg.inv(F.T*beam_mat.T*Ninv*beam_mat*F)*F.T*beam_mat.T*Ninv*D_vec # Equation A3
-        model = beam_mat*F*x_mat
-      
-        plot_axes[0][0].plot(nu*1.e-9, np.abs(model[0:len(nu)]), color="k", alpha=0.1,linestyle='-')
-        plot_axes[0][0].plot(nu*1.e-9, np.abs(model[len(nu):2*len(nu)]), color="r", alpha=0.1,linestyle='-')
-        plot_axes[0][0].plot(nu*1.e-9, np.abs(model[2*len(nu):3*len(nu)]), color="b", alpha=0.1,linestyle='-')
-
-    plt.savefig(pdir + 'model.' + ext,format=ext,dpi=res_dpi,bbox_inches='tight')
-    plt.close('all')
 
 def main():
     # Main parameters:
@@ -378,7 +420,7 @@ def main():
     # params_in = Input component spectral parameters
     # models_fit = Models to fit the data
     
-    models_in = np.array(['hd', 'pow'])
+    models_in = np.array(['mbb', 'pow'])
     models_fit = np.array(['mbb', 'pow'])
     nfreq = 10
     fsigma_T = 0.01
@@ -409,7 +451,8 @@ def main():
     fsilfe = 0.
     uval = 0.
     dust_interp = initialize_hd_dust_model()
-    dust_params_in = np.array([dust_interp, fcar, fsilfe, uval])
+    dust_params_in = np.array([dust_beta, dust_T])
+    #dust_params_in = np.array([dust_interp, fcar, fsilfe, uval])
     
     sync_beta = -3.
     sync_params_in = np.array([sync_beta])
