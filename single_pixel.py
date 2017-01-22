@@ -230,7 +230,7 @@ def gen_data(nu, fsigma_T, fsigma_P, models_in, amps_in, params_in):
     fsigma = np.zeros(3*len(nu))
     fsigma[0:len(nu)] = fsigma_T*np.ones(len(nu))
     fsigma[len(nu):] = fsigma_P*np.ones(2*len(nu))
-    noise_mat = np.matrix(np.diagflat((dust_in + sync_in + cmb_in).flatten()*fsigma))
+    noise_mat = np.matrix(np.diagflat((cmb_in).flatten()*fsigma))
     Ninv = np.linalg.inv(noise_mat)
 
     # Add noise to generated data
