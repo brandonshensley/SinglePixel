@@ -58,12 +58,10 @@ def prep_figure(num_rows,num_cols,hgap,vgap,width,height):
 
 # Planck function
 def B_nu (nu, T):
-    #np.seterr(over='ignore')
     return 2.0*h*(nu**3)/(c*c*(np.expm1(h*nu/(k*T))))
 
 # Conversion to K_CMB
 def G_nu (nu, T):
-    #np.seterr(over='ignore')
     x = h*nu/(k*T)
     return B_nu(nu,T)*x*np.exp(x)/(np.expm1(x)*T)
 
@@ -126,6 +124,14 @@ def sync_model (nu, sync_params) :
     sync_Q = sync_I
     sync_U = sync_I
     return np.array([sync_I, sync_Q, sync_U])
+
+# Simple power law free-free model
+def ff_model (nu, ff_params) :
+    nu_ref = 30.*1.e9
+    ff_I = (nu/nu_ref)**-0.118*G_nu(nu_ref,Tcmb)/G_nu(nu,Tcmb)
+    ff_Q = ff_I
+    ff_U = ff_I
+    return np.array([ff_I, ff_Q, ff_U])
 
 # CMB model-- spectrally flat
 def cmb_model (nu, cmb_params) :
