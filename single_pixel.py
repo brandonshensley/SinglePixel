@@ -8,10 +8,6 @@ import emcee
 import corner
 import time
 
-# For Multinest
-import pymultinest
-import json
-
 # For Plotting
 import matplotlib
 import matplotlib.pyplot as plt
@@ -23,11 +19,6 @@ c = 2.99792458e10       # Speed of light, cm/s
 h = 6.62606957e-27      # Planck constant, erg s
 k = 1.3806488e-16       # Boltzmann constant, erg/K
 Tcmb = 2.7255           # CMB temperature, K
-
-# MCMC parameters
-nwalkers = 50
-burn = 500
-steps = 1000
 
 # Plotting parameters
 res_dpi = 300
@@ -238,12 +229,22 @@ def gen_data(nu, fsigma_T, fsigma_P, models_in, amps_in, params_in):
 
     return (D_vec, Ninv)
 
-# MCMC call
-def mcmc (guess, nu, D, Ninv, beam_mat, ndim, models_fit, label):
-    pos = [guess*(1.+0.1*np.random.randn(ndim)) for i in range(nwalkers)]
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob, args=(nu,D,Ninv,beam_mat,models_fit))
-    sampler.run_mcmc(pos, burn+steps)
 
+def mcmc(guess, nu, D, Ninv, beam_mat, models_fit, label=None, nwalkers=50, burn=500, steps=1000, save=False):
+    """
+    Run MCMC to fit model to some simulated data.
+    """
+    # Define starting points
+    ndim = guess.size
+    pos = [guess*(1.+0.1*np.random.randn(ndim)) for i in range(nwalkers)]
+    
+    # Run emcee sampler
+    sampler = emcee.EnsembleSampler( nwalkers, ndim, lnprob, 
+                                     args=(nu, D, Ninv, beam_mat, models_fit) )
+    sampler.run_mcmc(pos, burn+steps)
+    samples = sampler.chain[:, burn:, :].reshape((-1, ndim))
+    
+    """
     # Plot the chains, including burn-in
     fig, axes = plt.subplots(figsize=(13, ndim*3.), nrows=ndim)
     labels = [r'$\beta$', r'$T_d$', r'$\alpha_s$']
@@ -255,29 +256,41 @@ def mcmc (guess, nu, D, Ninv, beam_mat, ndim, models_fit, label):
         ax.set_title(lab)
     fig.savefig('chains_' + label + '.png')
     plt.close('all')
-        
-    samples = sampler.chain[:, burn:, :].reshape((-1, ndim))
+    """
 
-    # Uncomment to save chains
-    #np.savetxt('samples.dat',samples)
-    beta_out = np.median(samples,axis=0)
+    # Save chains to file
+    if save:
+        np.savetxt('samples.dat', samples)
+    
+    # Summary statistics for fitted parameters
+    # Dust model
+    beta_out = np.median(samples, axis=0)
     ndust = 0
     if (models_fit[0] == 'mbb'):
         ndust = 2
         dust_params = beta_out[0:2]
-    else :
-        print 'Error! Code not configured to fit HD16 models!'
-        exit()
+    else:
+        raise NotImplementedError("Code not configured to fit HD16 models.")
+    
+    # Synchrotron power law
     if (models_fit[1] == 'pow'):
         sync_params = beta_out[ndust:ndust+1]
-    else :
-        print 'Error! Synchrotron model ' + models_fit[1] + ' not recognized!'
-        exit()
+    else:
+        raise ValueError("Synchrotron model '%s' not recognized." % models_fit[1])
+    
+    # CMB
     cmb_params = np.array([])
-    return (dust_params, sync_params, cmb_params, samples)
+    
+    # Return summary statistics and samples
+    return dust_params, sync_params, cmb_params, samples
+
 
 # Multinest Call
 def multinest (nu, D, Ninv, beam_mat, ndim, models_fit, label):
+    
+    import pymultinest
+    import json
+    
     if not os.path.exists("chains"): os.mkdir("chains")
     parameters=["dust_beta","dust_Td","sync_beta"]
     n_params = len(parameters)
@@ -356,8 +369,12 @@ def multinest (nu, D, Ninv, beam_mat, ndim, models_fit, label):
         plt.savefig(outfile, format='pdf', bbox_inches='tight')
         plt.close()
     
-# CMB Chi-Square for a model design
+
 def model_test(nu, fsigma_T, fsigma_P, models_in, amps_in, params_in, models_fit, label):
+    """
+    Generate simulated data given an input model, and perform MCMC fit using 
+    another model.
+    """
     # Generate fake data with some "true" parameters
     (D_vec, Ninv) = gen_data(nu, fsigma_T, fsigma_P, models_in, amps_in, params_in)
     Ninv_sqrt = np.matrix(linalg.sqrtm(Ninv))
@@ -367,18 +384,20 @@ def model_test(nu, fsigma_T, fsigma_P, models_in, amps_in, params_in, models_fit
     # Beam model
     beam_mat = np.identity(3*len(nu))
 
-    # MCMC
+    # Set-up MCMC
     dust_guess = np.array([1.6, 20.])
     sync_guess = np.array([-3.])
     cmb_guess = np.array([])
     guess = np.concatenate((dust_guess, sync_guess, cmb_guess))
-    ndim = len(dust_guess) + len(sync_guess) + len(cmb_guess)
+    #ndim = len(dust_guess) + len(sync_guess) + len(cmb_guess)
     
-    #start = time.clock()
-    (dust_params_out, sync_params_out, cmb_params_out, samples) = mcmc(guess, nu, D_vec, Ninv, beam_mat, ndim, models_fit, label)
-    #end = time.clock()
-    #print 'Time in seconds: ', (end - start)
+    # Run MCMC sampler on this model
+    t0 = time.time()
+    dust_params_out, sync_params_out, cmb_params_out, samples \
+        = mcmc(guess, nu, D_vec, Ninv, beam_mat, models_fit, label)
+    print "MCMC run in %d sec." % (time.time() - t0)
     
+    # Estimate error on recovered CMB amplitudes
     (F_fg, F_cmb, F) = F_matrix(nu, dust_params_out, sync_params_out, cmb_params_out, models_fit)
     H = F_fg.T*Ninv*F_fg
     x_mat = np.linalg.inv(F.T*beam_mat.T*Ninv*beam_mat*F)*F.T*beam_mat.T*Ninv*D_vec # Equation A3
@@ -386,12 +405,13 @@ def model_test(nu, fsigma_T, fsigma_P, models_in, amps_in, params_in, models_fit
     U, Lambda, VT = np.linalg.svd(Ninv_sqrt*F_fg, full_matrices=False) # Equation A14
     N_eff_inv_cmb = F_cmb.T*Ninv_sqrt*(np.matrix(np.identity(U.shape[0])) - U*U.T)*Ninv_sqrt*F_cmb # Equation A16
     N_eff_cmb = np.linalg.inv(N_eff_inv_cmb)
-    cmb_noise = np.array([N_eff_cmb[0,0],N_eff_cmb[1,1],N_eff_cmb[2,2]])
+    cmb_noise = np.array([N_eff_cmb[0,0], N_eff_cmb[1,1], N_eff_cmb[2,2]])
 
     gls_cmb = x_mat[0:3,0]
     cmb_chisq = (np.matrix(cmb_amp).T - gls_cmb).T*N_eff_inv_cmb*(np.matrix(cmb_amp).T - gls_cmb)
-
-    if (label != 'none'):
+    
+    # Output triangle plots for dust
+    if label != None:
         if (models_fit[0] == 'mbb' and models_fit[1] == 'pow'):
             if (models_in[0] == 'mbb'):
                 fig = corner.corner(samples, truths=[dust_params[0], dust_params[1], sync_params[0]],
@@ -403,11 +423,14 @@ def model_test(nu, fsigma_T, fsigma_P, models_in, amps_in, params_in, models_fit
             exit()
         fig.savefig('triangle_' + label + '.png')
         plt.close('all')
-        
-    multinest(nu, D_vec, Ninv, beam_mat, ndim, models_fit, label)
-
+    
+    # Run multinest sampler
+    #multinest(nu, D_vec, Ninv, beam_mat, ndim, models_fit, label)
+    
     return gls_cmb, cmb_chisq, cmb_noise
 
+
+"""
 def main():
     # Main parameters:
 
@@ -485,3 +508,4 @@ def main():
                     
 if __name__ == '__main__':
      main()
+"""
