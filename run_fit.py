@@ -26,10 +26,10 @@ Parameters
 
 # Band parameter definitions
 nbands = 5
-NPROC = 4 #32
+NPROC = 1 #4 #32
 filename = "bands_log_%d.dat" % nbands
-numin_vals = [5., 10., 20., 30., 40., 50., 60., 70.]
-numax_vals = [200., 300., 400., 500., 600., 700.]
+numin_vals = [5., ] #10., 20., 30., 40., 50., 60., 70.]
+numax_vals = [200.,] # 300., 400., 500., 600., 700.]
 
 
 models_fit = np.array(['mbb', 'pow'])
@@ -104,6 +104,9 @@ def run_model(nu_params):
     print "nu_min = %d GHz, nu_max = %d GHz" % (nu_min, nu_max)
     nu = bands_log(nu_min, nu_max, nbands)
     label = str(nu_min) + '_' + str(nu_max)
+    
+    #FIXME
+    nu = np.array([10., 70., 140.])
     
     # Simulate data and run MCMC fit
     gls_cmb, cmb_chisq, cmb_noise \

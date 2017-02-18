@@ -169,6 +169,12 @@ def F_matrix (nu, dust_params, sync_params, cmb_params, models):
 
     F = np.hstack((F_cmb, F_fg))
     
+    np.savetxt("TEST_F.dat", F)
+    np.savetxt("TEST_Ffg.dat", F_fg)
+    np.savetxt("TEST_Fcmb.dat", F_cmb)
+    import sys
+    sys.exit()
+    
     return (np.matrix(F_fg),np.matrix(F_cmb),np.matrix(F))
 
 # Priors
