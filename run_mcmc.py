@@ -9,31 +9,19 @@ import models
 import fitting
 from multiprocessing import Pool
 
-"""
-Main parameters:
-
-Parameters
-----------
-  nfreq = Number of frequency channels
-  fsigma_T = Noise to signal in each band (Temperature)
-  fsigma_P = Noise to signal in each band (Polarization)
-
-  models_in = Models to generate the data
-  amps_in = Input component amplitudes
-  params_in = Input component spectral parameters
-  models_fit = Models to fit the data
-"""
-
 # Band parameter definitions
 nbands = 7
 NPROC = 4 #32
-filename = "bands_log_%d.dat" % nbands
+SEED = 10
+
+np.random.seed(SEED)
+
 #numin_vals = [5., 10., 20., 30., 40., 50., 60., 70.]
 #numax_vals = [200., 300., 400., 500., 600., 700.]
 numin_vals = [5., ] #10., 20., 30., 40., 50., 60., 70.]
-numax_vals = [1000.,] # 300., 400., 500., 600., 700.]
+numax_vals = [100.,] # 300., 400., 500., 600., 700.]
 
-#models_fit = np.array(['mbb', 'pow'])
+# Temperature/polarisation noise rms for all bands, as a fraction of T_cmb
 fsigma_T = 0.01
 fsigma_P = 0.01
 
@@ -42,12 +30,15 @@ dust_model = models.DustMBB(amp_I=10., amp_Q=1., amp_U=1.2, dust_beta=1.6, dust_
 sync_model = models.SyncPow(amp_I=10., amp_Q=2., amp_U=1.5, sync_beta=-3.)
 cmb_model = models.CMB(amp_I=100., amp_Q=10., amp_U=20.)
 
+name_in = "MBBSync"
 mods_in = [dust_model, sync_model, cmb_model]
 amps_in = np.array([m.amps() for m in mods_in])
 params_in = np.array([m.params() for m in mods_in])
 
 # Define models to use for the fitting
+name_fit = "MBBSync"
 mods_fit = [dust_model, sync_model, cmb_model]
+
 
 
 def bands_log(nu_min, nu_max, nbands):
@@ -96,6 +87,7 @@ nu_min, nu_max = np.meshgrid(numin_vals, numax_vals)
 nu_params = np.column_stack((nu_min.flatten(), nu_max.flatten()))
 
 # Prepare output file for writing
+filename = "output/summary_%s.%s_nb%d_seed%d.dat" % (name_in, name_fit, nbands, SEED)
 f = open(filename, 'w')
 f.write("# nu_min, nu_max, cmb_chisq, gls_cmb_I, gls_cmb_Q, gls_cmb_U, sig(I)/I, sig(Q)/Q, sig(U)/U\n")
 f.close()
@@ -107,17 +99,19 @@ def run_model(nu_params):
     nu = bands_log(nu_min, nu_max, nbands)
     label = str(nu_min) + '_' + str(nu_max)
     
-    print nu / 1e9
-    #exit()
+    # Name of sample file
+    fname_samples = "output/samples_%s.%s_nb%d_seed%d_%s.dat" \
+                  % (name_in, name_fit, nbands, SEED, label)
     
     # Simulate data and run MCMC fit
     D_vec, Ninv = fitting.generate_data(nu, fsigma_T, fsigma_P, 
                                         components=mods_in)
                                         
-    gls_cmb, cmb_chisq, cmb_noise = fitting.model_test(nu, D_vec, Ninv, 
-                                                       mods_fit, 
-                                                       burn=5, steps=1000,
-                                                       cmb_amp_in=cmb_model.amps())
+    gls_cmb, cmb_chisq, cmb_noise \
+            = fitting.model_test(nu, D_vec, Ninv, mods_fit, 
+                                 burn=200, steps=1000,
+                                 cmb_amp_in=cmb_model.amps(),
+                                 sample_file=fname_samples)
     
     print "chisq =", cmb_chisq, gls_cmb.flatten()
     

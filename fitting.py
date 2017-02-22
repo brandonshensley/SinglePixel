@@ -23,6 +23,7 @@ def ln_prior(pvals, models):
     # Go through priors and apply them
     ln_prior = 0. # Set default prior value
     for pn in priors.keys():
+        if pn not in pnames: continue
         pmin, pmax = priors[pn] # Prior bounds
         val = pvals[pnames.index(pn)] # Current value of parameter
         if val < pmin or val > pmax:
@@ -100,22 +101,22 @@ def F_matrix(pvals, nu, models_fit, param_spec):
     # Stack CMB and FG F-matrices together
     F = np.hstack((F_cmb, F_fg))
     
-    # FIXME
-    #print "WRITING NEW"
-    #np.savetxt("NEW_F.dat", F)
-    #np.savetxt("NEW_Ffg.dat", F_fg)
-    #np.savetxt("NEW_Fcmb.dat", F_cmb)
     return np.matrix(F_fg), np.matrix(F_cmb), np.matrix(F)
 
 
 def mcmc(data_spec, models_fit, param_spec, nwalkers=50, 
-         burn=500, steps=1000, save=False):
+         burn=500, steps=1000, sample_file=None):
     """
     Run MCMC to fit model to some simulated data.
     """
     # Retrieve instrument/data model and parameter info
     nu, D_vec, Ninv, beam_mat = data_spec
     pnames, initial_vals, parent_model = param_spec
+    
+    # Get a list of model parameter names (FIXME: Ignores input pnames for now)
+    pnames = []
+    for mod in models_fit:
+        pnames += mod.param_names
     
     # Define starting points
     ndim = len(initial_vals)
@@ -128,16 +129,11 @@ def mcmc(data_spec, models_fit, param_spec, nwalkers=50,
     samples = sampler.chain[:, burn:, :].reshape((-1, ndim))
     
     # Save chains to file
-    if save:
-        np.savetxt('samples.dat', samples)
+    if sample_file is not None:
+        np.savetxt(sample_file, samples, fmt="%.6e", header=" ".join(pnames))
     
     # Summary statistics for fitted parameters
     params_out = np.median(samples, axis=0)
-    
-    # Get a list of model parameter names
-    pnames = []
-    for mod in models_fit:
-        pnames += mod.param_names
     
     # Return summary statistics and samples
     return params_out, pnames, samples
@@ -179,7 +175,7 @@ def generate_data(nu, fsigma_T, fsigma_P, components):
 
 #def model_test(nu, fsigma_T, fsigma_P, models_in, amps_in, params_in, models_fit, label):
 def model_test(nu, D_vec, Ninv, models_fit, initial_vals=None, burn=500, 
-               steps=1000, cmb_amp_in=None):
+               steps=1000, cmb_amp_in=None, sample_file=None):
     """
     Generate simulated data given an input model, and perform MCMC fit using 
     another model.
@@ -214,13 +210,12 @@ def model_test(nu, D_vec, Ninv, models_fit, initial_vals=None, burn=500,
     # Run MCMC sampler on this model
     t0 = time.time()
     params_out, pnames, samples = mcmc(data_spec, models_fit, param_spec, 
-                                       burn=burn, steps=steps)
+                                       burn=burn, steps=steps,
+                                       sample_file=sample_file)
     print "MCMC run in %d sec." % (time.time() - t0)
-    
-    import pylab as P
-    P.plot(samples)
-    P.show()
-    
+    #import pylab as P
+    #P.plot(samples)
+    #P.show()
     
     # Estimate error on recovered CMB amplitudes
     #F_fg, F_cmb, F = F_matrix(nu, dust_params_out, sync_params_out, 
