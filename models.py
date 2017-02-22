@@ -70,6 +70,9 @@ class DustMBB(DustModel):
         self.model = 'mbb'
         if self.name is None: self.name = "DustMBB"
         
+        # Reference frequency
+        self.nu_ref = 353. * 1e9
+        
         # List of parameter names
         self.param_names = ['dust_beta', 'dust_T',]
     
@@ -92,9 +95,7 @@ class DustMBB(DustModel):
         """
         beta = self.dust_beta
         Td = self.dust_T
-        
-        # Reference frequency
-        nu_ref = 353. * 1e9
+        nu_ref = self.nu_ref
         
         # Frequency-dependent scalings.
         dust_I = (nu / nu_ref)**beta * fg.B_nu(nu, Td) \
@@ -117,6 +118,9 @@ class DustHD(DustModel):
         # Set model name
         self.model = 'hd'
         if self.name is None: self.name = "DustHD"
+        
+        # Reference frequency
+        self.nu_ref = 353. * 1e9
         
         # Initialize HD model interpolation functions
         self.initialize_hd_dust_model()
@@ -181,13 +185,11 @@ class DustHD(DustModel):
         fcar = self.fcar
         fsilfe = self.fsilfe
         uval = self.uval
+        nu_ref = self.nu_ref
         car_i, sil_i, silfe_i, car_p, sil_p, silfe_p = self.dust_interp
         
-        # Reference frequency
-        nu_ref = 353. * 1e9
-        
         # Calculate wavelength and reference wavelength in suitable units
-        lam = 1.e4 * c / nu # in microns
+        lam = 1.e4 * c / (nu) # in microns
         lam_ref = 1.e4 * c / nu_ref # in microns
         
         unit_fac = fg.G_nu(nu_ref, fg.Tcmb) / fg.G_nu(nu, fg.Tcmb)
@@ -269,6 +271,7 @@ class SyncModel(object):
                * fg.G_nu(self.nu_ref, fg.Tcmb) / fg.G_nu(nu, fg.Tcmb)
         sync_Q = sync_I
         sync_U = sync_I
+        
         return np.array([sync_I, sync_Q, sync_U])
 
 

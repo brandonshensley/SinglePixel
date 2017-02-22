@@ -169,11 +169,11 @@ def F_matrix (nu, dust_params, sync_params, cmb_params, models):
 
     F = np.hstack((F_cmb, F_fg))
     
-    np.savetxt("TEST_F.dat", F)
-    np.savetxt("TEST_Ffg.dat", F_fg)
-    np.savetxt("TEST_Fcmb.dat", F_cmb)
-    import sys
-    sys.exit()
+    #np.savetxt("TEST_F.dat", F)
+    #np.savetxt("TEST_Ffg.dat", F_fg)
+    #np.savetxt("TEST_Fcmb.dat", F_cmb)
+    #import sys
+    #sys.exit()
     
     return (np.matrix(F_fg),np.matrix(F_cmb),np.matrix(F))
 
@@ -415,6 +415,18 @@ def model_test(nu, fsigma_T, fsigma_P, models_in, amps_in, params_in, models_fit
     x_mat = np.linalg.inv(F.T*beam_mat.T*Ninv*beam_mat*F)*F.T*beam_mat.T*Ninv*D_vec # Equation A3
     
     U, Lambda, VT = np.linalg.svd(Ninv_sqrt*F_fg, full_matrices=False) # Equation A14
+    
+    print "-"*30
+    print "F_cmb.T", F_cmb.T.shape
+    print "Ninv_sqrt", Ninv_sqrt.shape
+    print "F_cmb", F_cmb.shape
+    print "I", np.identity(U.shape[0]).shape
+    print "U", U.shape
+    print "U.T", U.T.shape
+    print "-"*30
+    
+    
+    
     N_eff_inv_cmb = F_cmb.T*Ninv_sqrt*(np.matrix(np.identity(U.shape[0])) - U*U.T)*Ninv_sqrt*F_cmb # Equation A16
     N_eff_cmb = np.linalg.inv(N_eff_inv_cmb)
     cmb_noise = np.array([N_eff_cmb[0,0], N_eff_cmb[1,1], N_eff_cmb[2,2]])
