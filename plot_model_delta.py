@@ -23,7 +23,7 @@ sync0 = models.SyncPow(amp_I=10., amp_Q=2., amp_U=1.5, sync_beta=-3.)
 sbeta_p = models.SyncPow(amp_I=10., amp_Q=2., amp_U=1.5, sync_beta=-3.+dbeta)
 sbeta_m = models.SyncPow(amp_I=10., amp_Q=2., amp_U=1.5, sync_beta=-3.-dbeta)
 
-nu = np.logspace(np.log10(5.), 3., 500)
+nu = np.logspace(np.log10(5.), 3., 500) * 1e9
 dfdbeta = (beta_p.scaling(nu) - beta_m.scaling(nu)) / (2. * dbeta)
 dfdT = (T_p.scaling(nu) - T_m.scaling(nu)) / (2. * dT)
 dfdsbeta = (sbeta_p.scaling(nu) - sbeta_m.scaling(nu)) / (2. * dbeta)
@@ -31,11 +31,11 @@ dfdsbeta = (sbeta_p.scaling(nu) - sbeta_m.scaling(nu)) / (2. * dbeta)
 
 
 P.subplot(111)
-P.plot(nu, np.abs(dfdbeta[0]), 'b-', lw=1.8)
-P.plot(nu, np.abs(dfdT[0]), 'c-', lw=1.8)
+P.plot(nu/1e9, np.abs(dfdbeta[0]), 'b-', lw=1.8)
+P.plot(nu/1e9, np.abs(dfdT[0]), 'c-', lw=1.8)
 P.axvline(dust0.nu_ref/1e9, color='b', ls='dashed')
 
-P.plot(nu, np.abs(dfdsbeta[0]), 'r-', lw=1.8)
+P.plot(nu/1e9, np.abs(dfdsbeta[0]), 'r-', lw=1.8)
 P.axvline(sync0.nu_ref/1e9, color='r', ls='dashed')
 
 """
