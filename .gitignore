@@ -1,3 +1,5 @@
 chains/*
 *.png
 test.out
+*.pyc
+hd_model.py
