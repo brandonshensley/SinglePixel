@@ -30,7 +30,7 @@ def ln_prior(pvals, models):
             ln_prior = -np.inf
     return ln_prior
 
-def lnprob(pvals, data_spec, models_fit, param_spec):
+def lnprob(pvals, data_spec, models_fit, param_spec, Ninv_sqrt):
     """
     log-probability (likelihood times prior) for a set of parameter values.
     """
@@ -52,7 +52,16 @@ def lnprob(pvals, data_spec, models_fit, param_spec):
     chi_square = (D_vec - beam_mat * F * x_mat).T * Ninv \
                * (D_vec - beam_mat * F * x_mat) # Equation A4
     
-    return logpr - chi_square - 0.5*np.log(np.linalg.det(H))
+    # Equation A14
+    U, Lambda, VT = np.linalg.svd(Ninv_sqrt*F_fg, full_matrices=False)
+    
+    # Equation A16
+    N_eff_inv_cmb = F_cmb.T * Ninv_sqrt \
+                  * (np.matrix(np.identity(U.shape[0])) - U*U.T) \
+                  * Ninv_sqrt * F_cmb
+        
+    return logpr - chi_square - 0.5*np.log(np.linalg.det(H)) \
+                              - 0.5*np.log(np.linalg.det(N_eff_inv_cmb))
 
 
 def F_matrix(pvals, nu, models_fit, param_spec):
@@ -113,6 +122,9 @@ def mcmc(data_spec, models_fit, param_spec, nwalkers=50,
     nu, D_vec, Ninv, beam_mat = data_spec
     pnames, initial_vals, parent_model = param_spec
     
+    # Invert noise covariance matrix
+    Ninv_sqrt = np.matrix(sqrtm(Ninv))
+    
     # Get a list of model parameter names (FIXME: Ignores input pnames for now)
     pnames = []
     for mod in models_fit:
@@ -124,7 +136,7 @@ def mcmc(data_spec, models_fit, param_spec, nwalkers=50,
     
     # Run emcee sampler
     sampler = emcee.EnsembleSampler( nwalkers, ndim, lnprob, 
-                                     args=(data_spec, models_fit, param_spec) )
+                           args=(data_spec, models_fit, param_spec, Ninv_sqrt) )
     sampler.run_mcmc(pos, burn + steps)
     samples = sampler.chain[:, burn:, :].reshape((-1, ndim))
     
