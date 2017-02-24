@@ -107,6 +107,32 @@ class DustMBB(DustModel):
         return np.array([dust_I, dust_Q, dust_U])
 
 
+class DustSimpleMBB(DustMBB):
+    def __init__(self, *args, **kwargs):
+        """
+        Simplified modified blackbody dust model.
+        """
+        super(DustSimpleMBB, self).__init__(*args, **kwargs)
+        self.model = 'simplembb'
+        if self.name is None: self.name = "DustSimpleMBB"
+        
+        # List of parameter names
+        self.param_names = ['dust_T',]
+    
+    def params(self):
+        """
+        Return list of parameters.
+        """
+        return np.array([self.dust_T,])
+    
+    def set_params(self, params):
+        """
+        Set parameters from an array, using the same ordering as the list 
+        returned by self.params().
+        """
+        self.dust_T = params
+
+
 class DustHD(DustModel):
     def __init__(self, *args, **kwargs):
         """
