@@ -153,7 +153,7 @@ def mcmc(data_spec, models_fit, param_spec, nwalkers=50,
     return params_out, pnames, samples
 
 
-def noise_model(fname="CMBpol_extended_noise.dat", scale=1.):
+def noise_model(fname="data/CMBpol_extended_noise.dat", scale=1.):
     """
     Load noise model from file and create interpolation function as a fn of 
     frequency. This is the noise per pixel, for some arbitrary pixel size.
@@ -182,7 +182,7 @@ def noise_model(fname="CMBpol_extended_noise.dat", scale=1.):
 
 
 def generate_data(nu, fsigma_T, fsigma_P, components, 
-                  noise_file="core_plus_extended_noise.dat"):
+                  noise_file="data/core_plus_extended_noise.dat"):
     """
     Create a mock data vector from a given set of models, including adding a 
     noise realization.

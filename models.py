@@ -159,10 +159,10 @@ class DustHD(DustModel):
         Initialize HD dust model interpolation fns using precomputed data.
         """
         # Read in precomputed dust emission spectra as a fn. of lambda and U
-        data_sil = np.genfromtxt("sil_DH16_Fe_00_2.0.dat")
-        data_silfe = np.genfromtxt("sil_DH16_Fe_05_2.0.dat")
-        data_cion = np.genfromtxt("cion_1.0.dat")
-        data_cneu = np.genfromtxt("cneu_1.0.dat")
+        data_sil = np.genfromtxt("data/sil_DH16_Fe_00_2.0.dat")
+        data_silfe = np.genfromtxt("data/sil_DH16_Fe_05_2.0.dat")
+        data_cion = np.genfromtxt("data/cion_1.0.dat")
+        data_cneu = np.genfromtxt("data/cneu_1.0.dat")
         
         wav = data_sil[:,0] # Wavelength
         uvec = np.linspace(-0.5, 0.5, num=11, endpoint=True)

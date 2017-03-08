@@ -10,7 +10,7 @@ import sys
 from multiprocessing import Pool
 
 # Reference noise curve
-NOISE_FILE = "core_plus_extended_noise.dat"
+NOISE_FILE = "data/core_plus_extended_noise.dat"
 
 # Band parameter definitions
 nbands = 7
