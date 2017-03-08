@@ -1,6 +1,7 @@
 
 import numpy as np
 from scipy.linalg import sqrtm
+from scipy.interpolate import interp1d
 import copy, time
 import emcee
 
@@ -10,9 +11,9 @@ def ln_prior(pvals, models):
     """
     # Define priors
     priors = {
-        'dust_T':       (5., 100.),
-        'dust_beta':    (0., 3.),
-        'sync_beta':    (-5., 0.)
+        'dust_T':       (16., 24.),
+        'dust_beta':    (1.4, 1.8),
+        'sync_beta':    (-3.6, -2.8)
     }
     
     # Make ordered list of parameter names
@@ -48,7 +49,7 @@ def lnprob(pvals, data_spec, models_fit, param_spec, Ninv_sqrt):
 
     x_mat = np.linalg.inv(F.T * beam_mat.T * Ninv * beam_mat * F) \
           * F.T * beam_mat.T * Ninv * D_vec # Equation A3
-
+    
     chi_square = (D_vec - beam_mat * F * x_mat).T * Ninv \
                * (D_vec - beam_mat * F * x_mat) # Equation A4
     
@@ -60,8 +61,9 @@ def lnprob(pvals, data_spec, models_fit, param_spec, Ninv_sqrt):
                   * (np.matrix(np.identity(U.shape[0])) - U*U.T) \
                   * Ninv_sqrt * F_cmb
         
-    return logpr - chi_square - 0.5*np.log(np.linalg.det(H)) \
+    lnprob = logpr - chi_square - 0.5*np.log(np.linalg.det(H)) \
                               - 0.5*np.log(np.linalg.det(N_eff_inv_cmb))
+    return lnprob
 
 
 def F_matrix(pvals, nu, models_fit, param_spec):
@@ -151,7 +153,36 @@ def mcmc(data_spec, models_fit, param_spec, nwalkers=50,
     return params_out, pnames, samples
 
 
-def generate_data(nu, fsigma_T, fsigma_P, components):
+def noise_model(fname="data/CMBpol_extended_noise.dat", scale=1.):
+    """
+    Load noise model from file and create interpolation function as a fn of 
+    frequency. This is the noise per pixel, for some arbitrary pixel size.
+    """
+    # Load from file
+    nu, sigma = np.genfromtxt(fname).T
+    
+    # Extrapolate at the ends of the frequency range
+    if nu[0] > 1.:
+        sigma0 = sigma[0] \
+               + (sigma[1] - sigma[0]) / (nu[1] - nu[0]) * (1. - nu[0])
+        sigman = sigma[-1] \
+               + (sigma[-1] - sigma[-2]) / (nu[-1] - nu[-2]) * (1e3 - nu[-1])
+        if sigma0 < 0.: sigma0 = sigma[0]
+        if sigman < 0.: sigman = sigma[-1]
+        
+        # Add to end of range
+        nu = np.concatenate(([1.,], nu, [1e3,]))
+        sigma = np.concatenate(([sigma0,], sigma, [sigman,]))
+    
+    # Rescale by constant overall factor
+    sigma *= scale
+    
+    # Construct interpolation function
+    return interp1d(nu, sigma, kind='linear', bounds_error=False)
+
+
+def generate_data(nu, fsigma_T, fsigma_P, components, 
+                  noise_file="data/core_plus_extended_noise.dat"):
     """
     Create a mock data vector from a given set of models, including adding a 
     noise realization.
@@ -172,12 +203,17 @@ def generate_data(nu, fsigma_T, fsigma_P, components):
     
     # Construct data vector
     D_vec = np.matrix(signal.flatten()).T
-        
-    # Noise model
+    
+    # Noise rms as a function of frequency
+    sigma_interp = noise_model(fname=noise_file, scale=1.)
+    sigma_nu = sigma_interp(nu / 1e9)
     fsigma = np.zeros(3*len(nu))
-    fsigma[0:len(nu)] = fsigma_T * np.ones(len(nu))
-    fsigma[len(nu):] = fsigma_P * np.ones(2*len(nu))
-    noise_mat = np.matrix( np.diagflat(cmb_signal.flatten() * fsigma) )
+    fsigma[0:len(nu)] = fsigma_T * sigma_nu # Stokes I
+    fsigma[len(nu):2*len(nu)] = fsigma_P * sigma_nu # Stokes Q
+    fsigma[2*len(nu):] = fsigma_P * sigma_nu # Stokes U
+    
+    #noise_mat = np.matrix( np.diagflat(cmb_signal.flatten() * fsigma) )
+    noise_mat = np.matrix( np.diagflat(fsigma) )
     Ninv = np.linalg.inv(noise_mat)
 
     # Add noise to generated data
@@ -185,7 +221,6 @@ def generate_data(nu, fsigma_T, fsigma_P, components):
     return D_vec, Ninv
 
 
-#def model_test(nu, fsigma_T, fsigma_P, models_in, amps_in, params_in, models_fit, label):
 def model_test(nu, D_vec, Ninv, models_fit, initial_vals=None, burn=500, 
                steps=1000, cmb_amp_in=None, sample_file=None):
     """
@@ -213,9 +248,6 @@ def model_test(nu, D_vec, Ninv, models_fit, initial_vals=None, burn=500,
     # Use 'guess' as the initial point for the MCMC if specified        
     if initial_vals is None: initial_vals = pvals
     
-    #guess = np.concatenate((dust_guess, sync_guess, cmb_guess))
-    #ndim = len(dust_guess) + len(sync_guess) + len(cmb_guess)
-    
     # Collect names, initial values, and parent components for the parameters
     param_spec = (pnames, initial_vals, parent_model)
     
@@ -225,13 +257,8 @@ def model_test(nu, D_vec, Ninv, models_fit, initial_vals=None, burn=500,
                                        burn=burn, steps=steps,
                                        sample_file=sample_file)
     print "MCMC run in %d sec." % (time.time() - t0)
-    #import pylab as P
-    #P.plot(samples)
-    #P.show()
     
     # Estimate error on recovered CMB amplitudes
-    #F_fg, F_cmb, F = F_matrix(nu, dust_params_out, sync_params_out, 
-    #                          cmb_params_out, models_fit)
     F_fg, F_cmb, F = F_matrix(params_out, nu, models_fit, param_spec)
     
     H = F_fg.T * Ninv * F_fg
